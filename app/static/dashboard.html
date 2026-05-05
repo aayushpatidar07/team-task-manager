@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Team Task Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body style="background: radial-gradient(circle at 20% 50%, rgba(43, 116, 180, 0.3), transparent 50%), radial-gradient(circle at 80% 50%, rgba(51, 160, 201, 0.3), transparent 50%), linear-gradient(135deg, #08111f 0%, #0f1b32 100%); color: #edf3ff; min-height: 100vh;">
+    <!-- Navigation -->
+    <nav class="navbar navbar-dark" style="background: rgba(11, 18, 32, 0.9); border-bottom: 1px solid rgba(123, 223, 242, 0.2);">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">📊 Team Task Manager</span>
+            <div class="d-flex gap-3 align-items-center">
+                <span id="userName" style="color: #aab6cf;"></span>
+                <button class="btn btn-sm" style="background: rgba(123, 223, 242, 0.2); color: #7bdff2; border: 1px solid rgba(123, 223, 242, 0.5);" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-5">
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <a href="dashboard.html" class="btn w-100" style="background: rgba(123, 223, 242, 0.3); color: #7bdff2; border: 1px solid rgba(123, 223, 242, 0.5); margin-bottom: 8px;">📊 Dashboard</a>
+            </div>
+            <div class="col-md-3">
+                <a href="tasks.html" class="btn w-100" style="background: rgba(123, 223, 242, 0.2); color: #7bdff2; border: 1px solid rgba(123, 223, 242, 0.5); margin-bottom: 8px;">✓ Tasks</a>
+            </div>
+            <div class="col-md-3" id="projectsNavContainer" style="display: none;">
+                <a href="projects.html" class="btn w-100" style="background: rgba(123, 223, 242, 0.2); color: #7bdff2; border: 1px solid rgba(123, 223, 242, 0.5); margin-bottom: 8px;">📁 Projects</a>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row">
+            <div class="col-md-3 mb-4">
+                <div style="background: rgba(11, 18, 32, 0.82); border-radius: 16px; padding: 24px; backdrop-filter: blur(18px); border: 1px solid rgba(123, 223, 242, 0.1);">
+                    <div style="color: #aab6cf; font-size: 0.9rem; margin-bottom: 8px;">Total Tasks</div>
+                    <div id="totalTasks" style="font-size: 2.5rem; font-weight: 700; color: #7bdff2;">0</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div style="background: rgba(11, 18, 32, 0.82); border-radius: 16px; padding: 24px; backdrop-filter: blur(18px); border: 1px solid rgba(123, 223, 242, 0.1);">
+                    <div style="color: #aab6cf; font-size: 0.9rem; margin-bottom: 8px;">Completed</div>
+                    <div id="completedTasks" style="font-size: 2.5rem; font-weight: 700; color: #4cc9f0;">0</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div style="background: rgba(11, 18, 32, 0.82); border-radius: 16px; padding: 24px; backdrop-filter: blur(18px); border: 1px solid rgba(123, 223, 242, 0.1);">
+                    <div style="color: #aab6cf; font-size: 0.9rem; margin-bottom: 8px;">Pending</div>
+                    <div id="pendingTasks" style="font-size: 2.5rem; font-weight: 700; color: #ffd60a;">0</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div style="background: rgba(11, 18, 32, 0.82); border-radius: 16px; padding: 24px; backdrop-filter: blur(18px); border: 1px solid rgba(123, 223, 242, 0.1);">
+                    <div style="color: #aab6cf; font-size: 0.9rem; margin-bottom: 8px;">Overdue</div>
+                    <div id="overdueTasks" style="font-size: 2.5rem; font-weight: 700; color: #ff006e;">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <a href="tasks.html" class="btn" style="background: linear-gradient(135deg, #7bdff2 0%, #4cc9f0 100%); color: #08111f; font-weight: 600; border: none; padding: 12px 24px;">View All Tasks →</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastBanner" style="display: none; position: fixed; bottom: 20px; left: 20px; background: rgba(200, 50, 50, 0.9); color: #edf3ff; padding: 16px 20px; border-radius: 8px; max-width: 300px; font-size: 0.95rem;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const token = localStorage.getItem('team-task-manager-token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        async function loadDashboard() {
+            try {
+                // Load user info
+                const userResponse = await fetch('/api/v1/auth/me', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!userResponse.ok) throw new Error('Failed to load user');
+                const user = await userResponse.json();
+                document.getElementById('userName').textContent = `Hello, ${user.name}`;
+
+                // Show projects nav for admins
+                if (user.role === 'ADMIN') {
+                    document.getElementById('projectsNavContainer').style.display = 'block';
+                }
+
+                // Load stats
+                const statsResponse = await fetch('/api/v1/tasks/dashboard/stats', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!statsResponse.ok) throw new Error('Failed to load stats');
+                const stats = await statsResponse.json();
+
+                document.getElementById('totalTasks').textContent = stats.total_tasks;
+                document.getElementById('completedTasks').textContent = stats.completed_tasks;
+                document.getElementById('pendingTasks').textContent = stats.pending_tasks;
+                document.getElementById('overdueTasks').textContent = stats.overdue_tasks;
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('team-task-manager-token');
+            window.location.href = 'login.html';
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toastBanner');
+            toast.textContent = message;
+            toast.style.background = type === 'success' ? 'rgba(50, 150, 100, 0.9)' : 'rgba(200, 50, 50, 0.9)';
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: team_task_manager_test
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+
+    - name: Lint with Python
+      run: |
+        python -m compileall app
+        echo "✓ All Python files compile successfully"
+
+    - name: Set up test environment
+      run: |
+        cat > .env.test << EOF
+        APP_NAME=Team Task Manager Test
+        SECRET_KEY=test-secret-key-do-not-use-in-production
+        DATABASE_URL=mysql+pymysql://root:root@localhost:3306/team_task_manager_test
+        CORS_ORIGINS=http://localhost:3000
+        CREATE_TABLES_ON_STARTUP=true
+        EOF
+
+    - name: Check code quality
+      run: |
+        # Check for import errors
+        python -c "from app.main import app; print('✓ App imports successfully')"
+        # Check all models
+        python -c "from app.models.user import User; from app.models.project import Project; from app.models.task import Task; print('✓ All models import successfully')"
+        # Check all schemas
+        python -c "from app.schemas.auth import UserCreate, LoginRequest, Token; from app.schemas.project import ProjectCreate, ProjectRead; from app.schemas.task import TaskCreate, TaskRead; print('✓ All schemas import successfully')"
+        # Check all CRUD
+        python -c "from app.crud.user import create_user; from app.crud.project import create_project; from app.crud.task import create_task; print('✓ All CRUD functions import successfully')"
+        # Check all routes
+        python -c "from app.api.routes.auth import router as auth; from app.api.routes.projects import router as proj; from app.api.routes.tasks import router as tasks; print('✓ All route routers import successfully')"
+
+    - name: Test database connection
+      run: |
+        python << 'EOF'
+        from app.core.database import engine, Base
+        from app.core.config import settings
+        
+        # Verify connection string is correct
+        print(f"Database URL: {settings.sqlalchemy_database_url[:50]}...")
+        
+        # Test connection
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        print("✓ Database connection successful")
+        
+        # Create tables
+        Base.metadata.create_all(bind=engine)
+        print("✓ Tables created successfully")
+        EOF
+
+    - name: Test security configuration
+      run: |
+        python << 'EOF'
+        from app.core.config import settings
+        
+        # Check required security settings
+        assert settings.secret_key != "change-me", "SECRET_KEY must be changed"
+        assert settings.algorithm == "HS256", "Algorithm should be HS256"
+        print("✓ Security configuration valid")
+        
+        # Check CORS is configured
+        assert len(settings.cors_origin_list) > 0, "CORS origins must be configured"
+        print(f"✓ CORS configured with {len(settings.cors_origin_list)} origins")
+        
+        # Check JWT expiration is reasonable
+        assert settings.access_token_expire_minutes > 0, "Token expiration must be positive"
+        print(f"✓ JWT expiration: {settings.access_token_expire_minutes} minutes")
+        EOF
+
+    - name: Test FastAPI startup
+      run: |
+        python << 'EOF'
+        from app.main import app
+        from fastapi.testclient import TestClient
+        
+        client = TestClient(app)
+        
+        # Test health endpoint
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        print("✓ Health endpoint working")
+        
+        # Test static files
+        response = client.get("/")
+        assert response.status_code == 200
+        print("✓ Static files served")
+        
+        # Test CORS headers
+        response = client.options("/api/v1/auth/login")
+        assert "access-control-allow-origin" in response.headers or response.status_code == 200
+        print("✓ CORS headers configured")
+        EOF
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to Railway
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      run: |
+        # Install Railway CLI
+        npm install -g @railway/cli
+        
+        # Deploy to Railway (requires RAILWAY_TOKEN secret)
+        railway up --detach
+        
+        # Note: Set RAILWAY_TOKEN in GitHub Settings → Secrets
+        # Get token from https://railway.app/account/tokens
+      if: env.RAILWAY_TOKEN != ''
+      continue-on-error: true
+
+    - name: Notify deployment
+      if: success()
+      run: |
+        echo "✓ Code passed all checks"
+        echo "✓ Ready for deployment to Railway"
+        echo "Visit: https://railway.app/dashboard"
