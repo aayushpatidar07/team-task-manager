@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from urllib.parse import quote_plus
 
@@ -27,8 +28,11 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_url(self) -> str:
+        # Prefer environment DATABASE_URL (Railway, managed services)
         if self.database_url:
             return self.database_url
+        
+        # Fallback: construct from individual variables (local development)
         password = quote_plus(self.mysql_password)
         return (
             f"mysql+pymysql://{self.mysql_user}:{password}"
@@ -38,6 +42,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+    
+    def is_production(self) -> bool:
+        """Check if running in production environment (Railway)"""
+        return bool(self.database_url and ("railway.app" in self.database_url or ":" in self.database_url))
 
 
 @lru_cache(maxsize=1)
