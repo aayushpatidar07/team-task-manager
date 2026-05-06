@@ -14,6 +14,10 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(User.email == email).first()
 
 
+def list_users(db: Session) -> list[User]:
+    return db.query(User).order_by(User.name.asc()).all()
+
+
 def create_user(db: Session, user_in: UserCreate, role: UserRole = UserRole.MEMBER) -> User:
     user = User(
         name=user_in.name,

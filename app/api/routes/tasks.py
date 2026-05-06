@@ -46,9 +46,22 @@ def read_tasks(
 def create_task(
     task_in: TaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> TaskRead:
-    task = create_db_task(db, task_in)
+    # Allow both ADMIN and MEMBER roles to create tasks
+    # If assigned_to_id is not provided, assign to current user
+    task_data = task_in.model_dump()
+    if task_data.get("assigned_to_id") is None:
+        task_data["assigned_to_id"] = current_user.id
+
+    # Only allow assigning to self unless you're an admin
+    if current_user.role != UserRole.ADMIN and task_data.get("assigned_to_id") != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members can only assign tasks to themselves"
+        )
+
+    task = create_db_task(db, TaskCreate(**task_data))
     return TaskRead.model_validate(task)
 
 

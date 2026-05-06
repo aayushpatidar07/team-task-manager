@@ -73,6 +73,7 @@
 
         let allUsers = [];
         let selectedMemberIds = [];
+        let selectedMemberEmails = [];
 
         async function loadPage() {
             try {
@@ -89,9 +90,23 @@
                     window.location.href = 'dashboard.html';
                 }
 
+                await loadAllUsers();
                 loadProjects();
             } catch (error) {
                 showToast(error.message, 'error');
+            }
+        }
+
+        async function loadAllUsers() {
+            try {
+                const response = await fetch('/api/v1/auth/users', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (response.ok) {
+                    allUsers = await response.json();
+                }
+            } catch (error) {
+                console.log('Could not load users');
             }
         }
 
@@ -108,7 +123,8 @@
             }
         }
 
-        function renderProjects(projects) {
+        function renderProjects(projectsList) {
+            projects = projectsList;
             const container = document.getElementById('projectsList');
             if (projects.length === 0) {
                 container.innerHTML = '<div style="color: #aab6cf; text-align: center; grid-column: 1/-1; padding: 40px;">No projects yet. Create one to get started!</div>';
@@ -138,9 +154,46 @@
                 showToast('Please enter an email address', 'error');
                 return;
             }
-            // In a real app, you'd look up the user by email
-            // For now, just show a placeholder
-            showToast('Note: You need to enter valid user IDs in the API', 'error');
+            
+            // Find user by email
+            const user = allUsers.find(u => u.email === email);
+            if (!user) {
+                showToast('User not found', 'error');
+                return;
+            }
+            
+            if (selectedMemberIds.includes(user.id)) {
+                showToast('User already added', 'error');
+                return;
+            }
+            
+            selectedMemberIds.push(user.id);
+            selectedMemberEmails.push(email);
+            
+            // Render members list
+            const membersList = document.getElementById('membersList');
+            membersList.innerHTML = selectedMemberEmails.map((em, idx) => `
+                <div style="background: rgba(123, 223, 242, 0.1); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #7bdff2;">${escapeHtml(em)}</span>
+                    <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 0.8rem; background: rgba(200, 50, 50, 0.3); color: #ff006e; border: none;" onclick="removeMember(${idx})">Remove</button>
+                </div>
+            `).join('');
+            
+            document.getElementById('memberEmail').value = '';
+            showToast('Member added!', 'success');
+        }
+
+        function removeMember(index) {
+            selectedMemberIds.splice(index, 1);
+            selectedMemberEmails.splice(index, 1);
+            
+            const membersList = document.getElementById('membersList');
+            membersList.innerHTML = selectedMemberEmails.map((em, idx) => `
+                <div style="background: rgba(123, 223, 242, 0.1); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #7bdff2;">${escapeHtml(em)}</span>
+                    <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 0.8rem; background: rgba(200, 50, 50, 0.3); color: #ff006e; border: none;" onclick="removeMember(${idx})">Remove</button>
+                </div>
+            `).join('');
         }
 
         document.getElementById('projectForm').addEventListener('submit', async (e) => {
@@ -165,6 +218,7 @@
                 showToast('Project created successfully!', 'success');
                 document.getElementById('projectForm').reset();
                 selectedMemberIds = [];
+                selectedMemberEmails = [];
                 document.getElementById('membersList').innerHTML = '';
                 loadProjects();
             } catch (error) {
@@ -173,17 +227,84 @@
         });
 
         function editProject(projectId) {
-            showToast('Edit functionality coming soon', 'error');
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            
+            const newName = prompt('Project name:', project.name);
+            if (newName === null) return;
+            
+            const newDesc = prompt('Project description:', project.description || '');
+            if (newDesc === null) return;
+            
+            updateProject(projectId, newName, newDesc);
         }
+
+        async function updateProject(projectId, name, description) {
+            try {
+                const response = await fetch(`/api/v1/projects/${projectId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name, description }),
+                });
+                
+                if (!response.ok) throw new Error('Failed to update project');
+                showToast('Project updated!', 'success');
+                loadProjects();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        let projects = [];
 
         async function toggleMembers(projectId) {
             const container = document.getElementById(`members-${projectId}`);
             if (container.style.display === 'none') {
                 container.style.display = 'block';
-                // In a real app, load and display members
-                container.innerHTML = '<p style="color: #aab6cf; font-size: 0.9rem;">Members management coming soon</p>';
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return;
+                
+                const membersList = allUsers.filter(u => project.team_member_ids.includes(u.id));
+                
+                if (membersList.length === 0) {
+                    container.innerHTML = '<p style="color: #aab6cf; font-size: 0.9rem;">No team members assigned</p>';
+                } else {
+                    container.innerHTML = membersList.map(member => `
+                        <div style="background: rgba(123, 223, 242, 0.05); padding: 8px; border-radius: 6px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <p style="color: #edf3ff; margin: 0; font-size: 0.9rem;">${escapeHtml(member.name)}</p>
+                                <p style="color: #aab6cf; margin: 0; font-size: 0.85rem;">${escapeHtml(member.email)}</p>
+                            </div>
+                            <button class="btn btn-sm" style="background: rgba(200, 50, 50, 0.3); color: #ff006e; border: none; font-size: 0.8rem;" onclick="removeMemberFromProject(${projectId}, ${member.id})">Remove</button>
+                        </div>
+                    `).join('');
+                }
             } else {
                 container.style.display = 'none';
+            }
+        }
+
+        async function removeMemberFromProject(projectId, memberId) {
+            if (!confirm('Remove this member from the project?')) return;
+            
+            try {
+                const response = await fetch(`/api/v1/projects/${projectId}/members`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ user_id: memberId }),
+                });
+                
+                if (!response.ok) throw new Error('Failed to remove member');
+                showToast('Member removed!', 'success');
+                loadProjects();
+            } catch (error) {
+                showToast(error.message, 'error');
             }
         }
 

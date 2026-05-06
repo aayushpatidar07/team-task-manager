@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_active_user
 from app.core.roles import UserRole
 from app.core.security import create_access_token, verify_password
-from app.crud.user import create_user, get_user_by_email
+from app.crud.user import create_user, get_user_by_email, list_users
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
 
@@ -35,3 +35,16 @@ def login(login_in: LoginRequest, db: Session = Depends(get_db)) -> Token:
 @router.get("/me", response_model=UserRead)
 def read_me(current_user: User = Depends(get_current_active_user)) -> UserRead:
     return UserRead.model_validate(current_user)
+
+
+@router.get("/users", response_model=list[UserRead])
+def list_all_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[UserRead]:
+    # Only admins can list all users
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient privileges")
+    
+    users = list_users(db)
+    return [UserRead.model_validate(user) for user in users]

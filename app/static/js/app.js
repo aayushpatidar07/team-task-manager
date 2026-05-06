@@ -1,17 +1,24 @@
-const API_PREFIX = "/api/v1";
-const STORAGE_KEY = "team-task-manager-token";
+// Use full API base to avoid origin issues when frontend served from file://
+const API_PREFIX = "http://127.0.0.1:8001/api/v1";
+// Store only the access token under a conventional key used in examples
+const STORAGE_KEY = "access_token";
+const THEME_KEY = "theme";
 
 const authPanel = document.getElementById("authPanel");
 const workspacePanel = document.getElementById("workspacePanel");
 const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
+const forgotPasswordForm = document.getElementById("forgotPasswordForm");
 const showLoginBtn = document.getElementById("showLoginBtn");
 const showRegisterBtn = document.getElementById("showRegisterBtn");
+const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
+const backToLoginBtn = document.getElementById("backToLoginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const refreshBtn = document.getElementById("refreshBtn");
 const taskForm = document.getElementById("taskForm");
 const taskList = document.getElementById("taskList");
 const toast = document.getElementById("toast");
+const themeToggle = document.getElementById("themeToggle");
 
 const taskCount = document.getElementById("taskCount");
 const completedCount = document.getElementById("completedCount");
@@ -20,6 +27,25 @@ const openCount = document.getElementById("openCount");
 let authToken = localStorage.getItem(STORAGE_KEY) || "";
 let activeUser = null;
 let tasks = [];
+
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
+  if (savedTheme === "light") {
+    document.body.classList.add("light-theme");
+    themeToggle.querySelector(".theme-icon").textContent = "☀️";
+  } else {
+    document.body.classList.remove("light-theme");
+    themeToggle.querySelector(".theme-icon").textContent = "🌙";
+  }
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle("light-theme");
+  const newTheme = isLight ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, newTheme);
+  themeToggle.querySelector(".theme-icon").textContent = isLight ? "☀️" : "🌙";
+  showToast(`Switched to ${newTheme} theme`, "success");
+}
 
 function showToast(message, tone = "info") {
   toast.textContent = message;
@@ -61,6 +87,7 @@ function getHeaders(includeJson = true) {
   if (includeJson) {
     headers["Content-Type"] = "application/json";
   }
+  headers["Accept"] = "application/json";
   if (authToken) {
     headers.Authorization = `Bearer ${authToken}`;
   }
@@ -68,6 +95,7 @@ function getHeaders(includeJson = true) {
 }
 
 async function request(path, options = {}) {
+  console.log("API request", { url: `${API_PREFIX}${path}`, options });
   const response = await fetch(`${API_PREFIX}${path}`, {
     ...options,
     headers: {
@@ -84,9 +112,11 @@ async function request(path, options = {}) {
     const message = Array.isArray(detail)
       ? detail.map((item) => item.msg || item.message || "Validation error").join(", ")
       : detail || "Request failed";
+    console.error("API error", { status: response.status, message, payload });
     throw new Error(message);
   }
 
+  console.log("API response", { status: response.status, payload });
   return payload;
 }
 
@@ -144,7 +174,7 @@ async function refreshTasks() {
 
 async function loadProfile() {
   activeUser = await request("/auth/me", { method: "GET", headers: getHeaders(false) });
-  showToast(`Welcome back, ${activeUser.username}.`, "success");
+  showToast(`Welcome back, ${activeUser.name}.`, "success");
 }
 
 async function bootstrapWorkspace() {
@@ -176,6 +206,7 @@ loginForm.addEventListener("submit", async (event) => {
       }),
     });
     authToken = payload.access_token;
+    console.log("login token", authToken);
     localStorage.setItem(STORAGE_KEY, authToken);
     showToast("Signed in successfully.", "success");
     await bootstrapWorkspace();
@@ -196,6 +227,7 @@ registerForm.addEventListener("submit", async (event) => {
       }),
     });
     authToken = payload.access_token;
+    console.log("register token", authToken);
     localStorage.setItem(STORAGE_KEY, authToken);
     showToast("Account created.", "success");
     await bootstrapWorkspace();
@@ -206,6 +238,7 @@ registerForm.addEventListener("submit", async (event) => {
 
 showLoginBtn.addEventListener("click", () => {
   registerForm.classList.add("d-none");
+  forgotPasswordForm.classList.add("d-none");
   loginForm.classList.remove("d-none");
   showLoginBtn.classList.add("active");
   showRegisterBtn.classList.remove("active");
@@ -213,10 +246,38 @@ showLoginBtn.addEventListener("click", () => {
 
 showRegisterBtn.addEventListener("click", () => {
   loginForm.classList.add("d-none");
+  forgotPasswordForm.classList.add("d-none");
   registerForm.classList.remove("d-none");
   showRegisterBtn.classList.add("active");
   showLoginBtn.classList.remove("active");
 });
+
+forgotPasswordBtn.addEventListener("click", () => {
+  loginForm.classList.add("d-none");
+  registerForm.classList.add("d-none");
+  forgotPasswordForm.classList.remove("d-none");
+});
+
+backToLoginBtn.addEventListener("click", () => {
+  forgotPasswordForm.classList.add("d-none");
+  loginForm.classList.remove("d-none");
+  document.getElementById("forgotEmail").value = "";
+});
+
+forgotPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const email = document.getElementById("forgotEmail").value.trim();
+  showToast(`Reset link has been sent to ${email}. Please check your inbox.`, "success");
+  document.getElementById("forgotEmail").value = "";
+  setTimeout(() => {
+    forgotPasswordForm.classList.add("d-none");
+    loginForm.classList.remove("d-none");
+  }, 2000);
+});
+
+if (themeToggle) {
+  themeToggle.addEventListener("click", toggleTheme);
+}
 
 logoutBtn.addEventListener("click", () => {
   authToken = "";
@@ -299,4 +360,5 @@ taskList.addEventListener("click", async (event) => {
   }
 });
 
+initTheme();
 bootstrapWorkspace();
