@@ -28,24 +28,30 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_url(self) -> str:
-        # Prefer environment DATABASE_URL (Railway, managed services)
+        # PRODUCTION: DATABASE_URL is mandatory (Railway provides via MySQL plugin)
         if self.database_url:
             return self.database_url
         
-        # Fallback: construct from individual variables (local development)
+        # DEVELOPMENT: Use individual variables if DATABASE_URL not set
+        # This allows local development with MYSQL_* env vars
         password = quote_plus(self.mysql_password)
-        return (
+        db_url = (
             f"mysql+pymysql://{self.mysql_user}:{password}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
+        
+        # Warn if using localhost defaults (likely misconfiguration on cloud)
+        if self.mysql_host == "127.0.0.1" and os.getenv("RAILWAY_ENVIRONMENT_ID"):
+            raise RuntimeError(
+                "DATABASE_URL environment variable not set on Railway. "
+                "Add MySQL service or set DATABASE_URL manually in Railway dashboard."
+            )
+        
+        return db_url
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-    
-    def is_production(self) -> bool:
-        """Check if running in production environment (Railway)"""
-        return bool(self.database_url and ("railway.app" in self.database_url or ":" in self.database_url))
 
 
 @lru_cache(maxsize=1)

@@ -69,14 +69,24 @@ app.include_router(tasks_router, prefix=settings.api_v1_prefix)
 def on_startup() -> None:
     """Initialize database and create tables on startup"""
     try:
-        logger.info("Starting application initialization...")
-        logger.info(f"Database URL: {settings.sqlalchemy_database_url[:50]}...")
+        logger.info("=" * 60)
+        logger.info("STARTUP: Initializing application...")
+        logger.info("=" * 60)
+        
+        db_url_display = settings.sqlalchemy_database_url[:60] + "..."
+        logger.info(f"DATABASE_URL: {db_url_display}")
         
         # Test database connection
+        logger.info("Connecting to database...")
         if not test_database_connection():
-            logger.error("Cannot proceed: Database connection failed")
-            logger.error("Ensure DATABASE_URL or MYSQL_* environment variables are set correctly")
-            raise RuntimeError("Database connection failed during startup")
+            error_msg = (
+                "Cannot connect to database. Check:\n"
+                "  1. DATABASE_URL environment variable is set on Railway\n"
+                "  2. MySQL service is added to Railway project\n"
+                "  3. Local development: ensure MySQL server is running"
+            )
+            logger.error(error_msg)
+            raise RuntimeError("Database connection failed")
         
         # Create tables
         if settings.create_tables_on_startup:
@@ -90,16 +100,21 @@ def on_startup() -> None:
             db = SessionLocal()
             try:
                 bootstrap_admin_user(db, settings.admin_name, settings.admin_email, settings.admin_password)
-                logger.info(f"✓ Admin user bootstrapped: {settings.admin_email}")
+                logger.info(f"✓ Admin user created: {settings.admin_email}")
             except Exception as e:
-                logger.warning(f"Admin bootstrap failed (may already exist): {str(e)}")
+                logger.warning(f"Admin bootstrap: {str(e)} (may already exist)")
             finally:
                 db.close()
         
-        logger.info("✓ Application initialization complete")
+        logger.info("=" * 60)
+        logger.info("✓ APPLICATION READY")
+        logger.info("=" * 60)
         
+    except RuntimeError as e:
+        logger.error(f"✗ STARTUP FAILED: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"✗ Startup failed: {str(e)}")
+        logger.error(f"✗ STARTUP ERROR: {str(e)}")
         raise
 
 
