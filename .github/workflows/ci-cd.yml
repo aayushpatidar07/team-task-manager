@@ -46,7 +46,7 @@ jobs:
 
     - name: Set up test environment
       run: |
-        cat > .env.test << EOF
+        cat > .env << EOF
         APP_NAME=Team Task Manager Test
         SECRET_KEY=test-secret-key-do-not-use-in-production
         DATABASE_URL=mysql+pymysql://root:root@localhost:3306/team_task_manager_test
