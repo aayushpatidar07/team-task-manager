@@ -18,9 +18,12 @@ class Base(DeclarativeBase):
 
 # Get database URL
 db_url = settings.sqlalchemy_database_url
+logger.info(f"DATABASE_URL detected: {bool(settings.database_url)}")
+logger.info(f"SQLAlchemy URL (first 80 chars): {db_url[:80]}...")
 
 # Use NullPool for Railway (no connection pooling)
 pool_class = NullPool if settings.database_url else None
+logger.info(f"Using {'NullPool (Railway)' if pool_class else 'Standard pool (local development)'}")
 
 # Initialize database engine
 try:

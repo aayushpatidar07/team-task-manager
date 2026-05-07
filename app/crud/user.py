@@ -1,9 +1,12 @@
 from sqlalchemy.orm import Session
+import logging
 
 from app.core.security import hash_password
 from app.core.roles import UserRole
 from app.models.user import User
 from app.schemas.auth import UserCreate
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_by_name(db: Session, name: str) -> User | None:
@@ -19,16 +22,26 @@ def list_users(db: Session) -> list[User]:
 
 
 def create_user(db: Session, user_in: UserCreate, role: UserRole = UserRole.MEMBER) -> User:
-    user = User(
-        name=user_in.name,
-        email=str(user_in.email).lower(),
-        hashed_password=hash_password(user_in.password),
-        role=role,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    try:
+        logger.debug(f"Creating user: {user_in.email.lower()}")
+        user = User(
+            name=user_in.name,
+            email=str(user_in.email).lower(),
+            hashed_password=hash_password(user_in.password),
+            role=role,
+        )
+        logger.debug(f"User object created: {user.email}")
+        db.add(user)
+        logger.debug("User added to session")
+        db.commit()
+        logger.debug(f"User committed: {user.email}")
+        db.refresh(user)
+        logger.info(f"✓ User created: ID={user.id}, Email={user.email}, Role={user.role}")
+        return user
+    except Exception as e:
+        logger.error(f"Error creating user: {type(e).__name__}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise
 
 
 def bootstrap_admin_user(db: Session, name: str, email: str, password: str) -> User:

@@ -73,9 +73,15 @@ def on_startup() -> None:
         logger.info("STARTUP: Initializing application...")
         logger.info("=" * 60)
         
+        # Import models to register them with SQLAlchemy
+        from app.models.user import User  # noqa: F401
+        from app.models.task import Task  # noqa: F401
+        from app.models.project import Project  # noqa: F401
+        
         db_url_display = settings.sqlalchemy_database_url[:60] + "..."
         logger.info(f"DATABASE_URL: {db_url_display}")
         logger.info(f"CORS_ORIGINS: {settings.cors_origins}")
+        logger.info(f"Models registered: {list(Base.metadata.tables.keys())}")
         
         # Test database connection (with retry)
         max_retries = 3
@@ -94,13 +100,14 @@ def on_startup() -> None:
         
         # Create tables
         try:
-            if settings.create_tables_on_startup:
+            if settings.create_tables_on_startup and engine:
                 logger.info("Creating database tables...")
+                logger.info(f"Models registered: {[table for table in Base.metadata.tables.keys()]}")
                 Base.metadata.create_all(bind=engine)
-                logger.info("✓ Database tables created/verified")
+                logger.info(f"✓ Database tables created/verified: {list(Base.metadata.tables.keys())}")
         except Exception as e:
-            logger.error(f"Could not create tables: {str(e)}")
-            logger.warning("⚠️  Continuing without table creation")
+            logger.error(f"ERROR creating tables: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.warning("⚠️  Continuing without table creation - tables may not exist!")
         
         # Bootstrap admin user if configured
         if settings.admin_name and settings.admin_email and settings.admin_password:
@@ -143,5 +150,15 @@ def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSO
 
 @app.exception_handler(SQLAlchemyError)
 def sqlalchemy_exception_handler(_: Request, exc: SQLAlchemyError) -> JSONResponse:
-    logger.error(f"Database error: {str(exc)}")
-    return JSONResponse(status_code=500, content={"detail": "A database error occurred"})
+    error_msg = str(exc)
+    logger.error(f"SQLAlchemyError: {type(exc).__name__}: {error_msg}", exc_info=True)
+    # Check for common errors
+    if "table" in error_msg.lower() and "doesn't exist" in error_msg.lower():
+        detail = "Database tables not initialized. Please check server logs."
+    elif "integrity" in error_msg.lower() or "unique" in error_msg.lower():
+        detail = "Duplicate entry or constraint violation."
+    elif "connection" in error_msg.lower():
+        detail = "Database connection error."
+    else:
+        detail = f"Database error: {error_msg[:100]}"
+    return JSONResponse(status_code=500, content={"detail": detail})
