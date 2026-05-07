@@ -1,5 +1,5 @@
-// Use full API base to avoid origin issues when frontend served from file://
-const API_PREFIX = "http://127.0.0.1:8001/api/v1";
+// Use dynamic origin to work on any deployment (localhost or Railway)
+const API_PREFIX = `${window.location.origin}/api/v1`;
 // Store only the access token under a conventional key used in examples
 const STORAGE_KEY = "access_token";
 const THEME_KEY = "theme";
