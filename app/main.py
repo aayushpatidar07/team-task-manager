@@ -78,15 +78,24 @@ def on_startup() -> None:
         from app.models.task import Task  # noqa: F401
         from app.models.project import Project  # noqa: F401
         
-        db_url_display = settings.sqlalchemy_database_url[:60] + "..."
-        logger.info(f"DATABASE_URL: {db_url_display}")
-        logger.info(f"CORS_ORIGINS: {settings.cors_origins}")
-        logger.info(f"Models registered: {list(Base.metadata.tables.keys())}")
+        # Log database configuration - this may raise ValueError if DATABASE_URL is missing on Railway
+        try:
+            db_host = settings.get_db_host()
+            env_type = "Railway" if settings.is_railway_environment else "Local"
+            logger.info(f"Environment: {env_type}")
+            logger.info(f"Database Host: {db_host}")
+            logger.info(f"Database URL: {settings.sqlalchemy_database_url[:80]}...")
+            logger.info(f"CORS_ORIGINS: {settings.cors_origins}")
+            logger.info(f"Models registered: {list(Base.metadata.tables.keys())}")
+        except ValueError as e:
+            logger.critical(f"Configuration Error: {str(e)}")
+            logger.critical("Cannot start application without valid DATABASE_URL on Railway")
+            raise
         
         # Test database connection (with retry)
         max_retries = 3
         for attempt in range(max_retries):
-            logger.info(f"Testing database connection (attempt {attempt + 1}/{max_retries})...")
+            logger.info(f"Testing database connection (attempt {attempt + 1}/{max_retries}) to {db_host}...")
             if test_database_connection():
                 break
             if attempt < max_retries - 1:
@@ -128,9 +137,13 @@ def on_startup() -> None:
         logger.info("✓ APPLICATION STARTED")
         logger.info("=" * 60)
         
+    except ValueError as e:
+        # Configuration errors should stop the app
+        logger.critical(f"FATAL: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Startup warning: {str(e)}")
-        # Don't crash - let app start anyway
+        logger.error(f"Startup error: {str(e)}", exc_info=True)
+        logger.warning("⚠️  Starting app anyway - some features may not work")
 
 
 @app.get("/")
