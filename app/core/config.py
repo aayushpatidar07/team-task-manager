@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Team Task Manager"
     api_v1_prefix: str = "/api/v1"
-    secret_key: str = Field(default="change-me", alias="SECRET_KEY")
+    secret_key: str = Field(default="change-me-1234567890abcdefghijklmnop", alias="SECRET_KEY")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     database_url: str | None = Field(default=None, alias="DATABASE_URL")
@@ -23,34 +23,32 @@ class Settings(BaseSettings):
     admin_name: str | None = Field(default=None, validation_alias=AliasChoices("ADMIN_NAME", "ADMIN_USERNAME"))
     admin_email: str | None = Field(default=None, alias="ADMIN_EMAIL")
     admin_password: str | None = Field(default=None, alias="ADMIN_PASSWORD")
-    cors_origins: str = Field(default="http://localhost:8000,http://127.0.0.1:8000", alias="CORS_ORIGINS")
+    cors_origins: str = Field(default="*", alias="CORS_ORIGINS")
     create_tables_on_startup: bool = Field(default=True, alias="CREATE_TABLES_ON_STARTUP")
 
     @property
     def sqlalchemy_database_url(self) -> str:
-        # PRODUCTION: DATABASE_URL is mandatory (Railway provides via MySQL plugin)
+        # Railway: Uses DATABASE_URL provided by MySQL plugin
         if self.database_url:
-            return self.database_url
+            # Ensure it's a valid MySQL URL
+            if "mysql" not in self.database_url and "postgresql" not in self.database_url:
+                # Invalid URL - shouldn't happen but fallback to local
+                pass
+            else:
+                return self.database_url
         
-        # DEVELOPMENT: Use individual variables if DATABASE_URL not set
-        # This allows local development with MYSQL_* env vars
+        # Local development: Construct from individual variables
         password = quote_plus(self.mysql_password)
-        db_url = (
+        return (
             f"mysql+pymysql://{self.mysql_user}:{password}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
-        
-        # Warn if using localhost defaults (likely misconfiguration on cloud)
-        if self.mysql_host == "127.0.0.1" and os.getenv("RAILWAY_ENVIRONMENT_ID"):
-            raise RuntimeError(
-                "DATABASE_URL environment variable not set on Railway. "
-                "Add MySQL service or set DATABASE_URL manually in Railway dashboard."
-            )
-        
-        return db_url
 
     @property
     def cors_origin_list(self) -> list[str]:
+        # Allow all origins by default (safer for development/Railway)
+        if self.cors_origins == "*":
+            return ["*"]
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 

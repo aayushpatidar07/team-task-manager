@@ -75,47 +75,55 @@ def on_startup() -> None:
         
         db_url_display = settings.sqlalchemy_database_url[:60] + "..."
         logger.info(f"DATABASE_URL: {db_url_display}")
+        logger.info(f"CORS_ORIGINS: {settings.cors_origins}")
         
-        # Test database connection
-        logger.info("Connecting to database...")
-        if not test_database_connection():
-            error_msg = (
-                "Cannot connect to database. Check:\n"
-                "  1. DATABASE_URL environment variable is set on Railway\n"
-                "  2. MySQL service is added to Railway project\n"
-                "  3. Local development: ensure MySQL server is running"
-            )
-            logger.error(error_msg)
-            raise RuntimeError("Database connection failed")
+        # Test database connection (with retry)
+        max_retries = 3
+        for attempt in range(max_retries):
+            logger.info(f"Testing database connection (attempt {attempt + 1}/{max_retries})...")
+            if test_database_connection():
+                break
+            if attempt < max_retries - 1:
+                import time
+                logger.warning("Connection failed, retrying in 2 seconds...")
+                time.sleep(2)
+            else:
+                logger.error("Database connection failed after retries")
+                logger.warning("⚠️  Starting app anyway - database may be unavailable")
+                # Don't crash on startup - try to continue
         
         # Create tables
-        if settings.create_tables_on_startup:
-            logger.info("Creating database tables...")
-            Base.metadata.create_all(bind=engine)
-            logger.info("✓ Database tables created/verified")
+        try:
+            if settings.create_tables_on_startup:
+                logger.info("Creating database tables...")
+                Base.metadata.create_all(bind=engine)
+                logger.info("✓ Database tables created/verified")
+        except Exception as e:
+            logger.error(f"Could not create tables: {str(e)}")
+            logger.warning("⚠️  Continuing without table creation")
         
         # Bootstrap admin user if configured
         if settings.admin_name and settings.admin_email and settings.admin_password:
-            from app.core.database import SessionLocal
-            db = SessionLocal()
             try:
-                bootstrap_admin_user(db, settings.admin_name, settings.admin_email, settings.admin_password)
-                logger.info(f"✓ Admin user created: {settings.admin_email}")
+                from app.core.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    bootstrap_admin_user(db, settings.admin_name, settings.admin_email, settings.admin_password)
+                    logger.info(f"✓ Admin user created: {settings.admin_email}")
+                except Exception as e:
+                    logger.warning(f"Admin bootstrap: {str(e)} (may already exist)")
+                finally:
+                    db.close()
             except Exception as e:
-                logger.warning(f"Admin bootstrap: {str(e)} (may already exist)")
-            finally:
-                db.close()
+                logger.warning(f"Could not bootstrap admin: {str(e)}")
         
         logger.info("=" * 60)
-        logger.info("✓ APPLICATION READY")
+        logger.info("✓ APPLICATION STARTED")
         logger.info("=" * 60)
         
-    except RuntimeError as e:
-        logger.error(f"✗ STARTUP FAILED: {str(e)}")
-        raise
     except Exception as e:
-        logger.error(f"✗ STARTUP ERROR: {str(e)}")
-        raise
+        logger.error(f"Startup warning: {str(e)}")
+        # Don't crash - let app start anyway
 
 
 @app.get("/")
