@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 import logging
 
-from app.core.security import hash_password
+from app.core.security import get_password_hash
 from app.core.roles import UserRole
 from app.models.user import User
 from app.schemas.auth import UserCreate
@@ -27,7 +27,7 @@ def create_user(db: Session, user_in: UserCreate, role: UserRole = UserRole.MEMB
         user = User(
             name=user_in.name,
             email=str(user_in.email).lower(),
-            hashed_password=hash_password(user_in.password),
+            hashed_password=get_password_hash(user_in.password),
             role=role,
         )
         logger.debug(f"User object created: {user.email}")
@@ -56,7 +56,7 @@ def bootstrap_admin_user(db: Session, name: str, email: str, password: str) -> U
     admin_user = User(
         name=name,
         email=email.lower(),
-        hashed_password=hash_password(password),
+        hashed_password=get_password_hash(password),
         role=UserRole.ADMIN,
     )
     db.add(admin_user)
